@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI お出かけナビ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>AI お出かけナビ</h1>
+            <p class="subtitle">2歳児とのお出かけをスマートにサポート</p>
+        </header>
+
+        <main>
+            <!-- 入力フォームエリア -->
+            <section class="card input-section">
+                <div class="form-group">
+                    <label>移動手段</label>
+                    <div class="mode-toggle">
+                        <input type="radio" id="mode-bicycle" name="mode" value="bicycle" checked>
+                        <label for="mode-bicycle">🚲 自転車</label>
+                        <input type="radio" id="mode-car" name="mode" value="car">
+                        <label for="mode-car">🚗 クルマ</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>出発地</label>
+                    <div class="mode-toggle" style="margin-bottom: 12px;">
+                        <input type="radio" id="origin-home" name="origin-type" value="home" checked>
+                        <label for="origin-home">🏠 自宅 (清水ケ丘98)</label>
+                        <input type="radio" id="origin-current" name="origin-type" value="current">
+                        <label for="origin-current">📍 現在地 (GPS)</label>
+                    </div>
+                    <input type="text" id="origin" value="横浜市南区清水ケ丘98" style="background-color: var(--bg-color); color: var(--text-primary);">
+                    <small id="location-status" class="hidden" style="color: var(--success); display: block; margin-top: 6px; font-weight: 600;">✅ 現在地を取得しました</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="schedule">お出かけの予定日時</label>
+                    <input type="text" id="schedule" value="今すぐ" placeholder="例: 明日の昼頃、今週末など">
+                </div>
+
+                <div class="form-group">
+                    <label for="destination">行き先 (公園や施設名)</label>
+                    <input type="text" id="destination" placeholder="例: こども植物園" value="">
+                    <!-- AIおまかせ提案ボタン -->
+                    <button type="button" id="suggest-btn" class="secondary-btn">✨ 天気・日時からAIに候補を3〜5つ出してもらう</button>
+                    <!-- AIからの提案理由表示エリア -->
+                    <div id="suggest-result" class="hidden"></div>
+                </div>
+
+                <button id="search-btn" class="primary-btn">ルート・口コミAI分析を実行</button>
+            </section>
+
+            <!-- ローディング表示 -->
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>情報を集めてAIが分析しています...</p>
+                <p class="sub-loading">※初めての場合は数秒かかることがあります</p>
+            </div>
+
+            <!-- 結果エリア -->
+            <section id="result-section" class="hidden">
+                <!-- 天気・気象アラート -->
+                <div class="card weather-card" id="weather-card">
+                    <h3>🌤️ 天気と気象アラート</h3>
+                    <div id="weather-content"></div>
+                </div>
+
+                <!-- ルート・所要時間 -->
+                <div class="card route-card" id="route-card">
+                    <h3>📍 ルートと所要時間</h3>
+                    <div id="route-content"></div>
+                    <div id="parking-content" class="hidden">
+                        <h4>🅿️ 周辺の有料駐車場（上位3件）</h4>
+                        <ul id="parking-list"></ul>
+                    </div>
+                </div>
+
+                <!-- Gemini AIの口コミ分析 -->
+                <div class="card ai-card" id="ai-card">
+                    <h3>🤖 2歳パパママ向け AI口コミ分析</h3>
+                    <div id="ai-content"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
