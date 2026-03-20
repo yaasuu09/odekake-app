@@ -1,10 +1,43 @@
 import os
+from datetime import datetime
 import requests
 import googlemaps
 from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
+
+def get_child_age():
+    birth_date = datetime(2024, 3, 8)
+    now = datetime.now()
+    months = (now.year - birth_date.year) * 12 + now.month - birth_date.month
+    if now.day < birth_date.day:
+        months -= 1
+    years = months // 12
+    remaining_months = months % 12
+    return f"{years}歳{remaining_months}ヶ月"
+
+CHILD_HOROSCOPE = """
+【お子様のホロスコープ情報】
+Sun in Pisces 18°06’, in 9th House
+Moon in Aquarius 17°14’, in 7th House
+Mercury in Pisces 26°11’, in 9th House
+Venus in Aquarius 25°24’, in 8th House
+Mars in Aquarius 18°29’, in 7th House
+Jupiter in Taurus 12°35’, in 10th House
+Saturn in Pisces 10°47’, in 8th House
+Uranus in Taurus 19°48’, in 10th House
+Neptune in Pisces 27°00’, in 9th House
+Pluto in Aquarius 1°23’, in 7th House
+North Node in Aries 17°19’, Retrograde, in 9th House
+Lilith in Virgo 17°26’, in 3rd House
+Chiron in Aries 17°36’, in 9th House
+Fortune in Gemini 29°08’, in 12th House
+Vertex in Sagittarius 13°07’, in 5th House
+ASC in Cancer 29°59’
+MC in Aries 18°27’
+"""
+
 MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -36,9 +69,12 @@ def suggest_destination(mode, schedule, origin):
     temp = weather_info.get("temp", "不明")
     desc = weather_info.get("description", "不明")
     
+    age_str = get_child_age()
     prompt = f"""
-    あなたは横浜の地理に詳しい、優秀な子育て支援AIです。
-    ユーザーは「{origin}」付近を出発地とし、2歳の男の子を連れてお出かけをします。
+    あなたは横浜の地理と占星術の知識を併せ持つ、優秀な子育て支援AIです。
+    ユーザーは「{origin}」付近を出発地とし、{age_str}の男の子を連れてお出かけをします。
+    
+    {CHILD_HOROSCOPE}
     
     【条件】
     - 移動手段: {"自転車（片道最大30分程度、坂道が少なめの場所）" if mode == 'bicycle' else "車（片道最大50分程度、有料駐車場が近くにある場所）"}
@@ -46,7 +82,7 @@ def suggest_destination(mode, schedule, origin):
     - (もし「今すぐ」など直近の場合は、現在の天気(気温{temp}度, {desc})も考慮してください)
     
     【指示】
-    上記の条件にぴったり合う、2歳児が楽しめる横浜周辺（または車で開催できる範囲）のお出かけスポットを「3つ〜5つ」厳選してください。
+    お子様の月齢（{age_str}）の発達段階や、ホロスコープから読み取れる性格・興味関心の傾向、そして指定された条件にぴったり合うお出かけスポットを「3つ〜5つ」厳選してください。
     ※自転車の場合は行動範囲が狭くマンネリ化しやすいため、毎回同じ提案にならないよう、王道の公園だけでなく、絵本のある図書館、子供歓迎のカフェ、屋内キッズスペース、無料の支援センターなど、ジャンルの【バリエーションを最大限豊か】にしてください！
     ※有名すぎる場所（アンパンマンミュージアム等）は避けてください。
     
@@ -54,10 +90,12 @@ def suggest_destination(mode, schedule, origin):
     [
       {{
         "name": "施設名1",
-        "reason": "なぜおすすめなのか（120文字程度。天気や日時の条件を満たしている理由を交えて）"
+        "stars": "⭐⭐⭐⭐⭐",
+        "reason": "なぜおすすめなのか（120文字程度。月齢やホロスコープの観点を含めて）"
       }},
       {{
         "name": "施設名2",
+        "stars": "⭐⭐⭐⭐",
         "reason": "なぜおすすめなのか（120文字程度）"
       }}
     ]
@@ -70,7 +108,7 @@ def suggest_destination(mode, schedule, origin):
         return {"suggestion": response.text}
     except Exception as e:
         print("Suggest Error:", e)
-        return {"suggestion": '[{"name":"蒔田公園", "reason":"大型遊具があり2歳児も安全に遊べます。"}]'}
+        return {"suggestion": '[{"name":"蒔田公園", "stars":"⭐⭐⭐", "reason":"大型遊具があり安全に遊べます。"}]'}
 
 def get_route_and_parking(origin, destination, mode):
     maps_mode = "bicycling" if mode == "bicycle" else "driving"
@@ -119,12 +157,16 @@ def analyze_place(place_name):
         ]
 
     reviews_text = "\n\n".join([f"口コミ:\n{r}" for r in reviews])
+    age_str = get_child_age()
     prompt = f"""
-    あなたは優秀な子育て支援AIです。以下の施設の口コミを統合して、2歳の子供を連れた親の視点で【良い点】と【注意点】を要約してください。
+    あなたは優秀な子育て支援AIです。以下の施設の口コミを統合して、{age_str}の男の子を連れた親の視点で【良い点】と【注意点】を要約してください。
+    
+    {CHILD_HOROSCOPE}
+
     【絶対に分析してほしいポイント】
-    1. おむつ替え/授乳スペースの有無と使いやすさ
-    2. 2歳児が安全に楽しめるか
-    3. 混雑状況とベビーカーでの移動しやすさ
+    1. おむつ替え/トイレ等、{age_str}の快適さ
+    2. 安全性と、ホロスコープから推測される本人の性格との相性・おすすめ度（⭐⭐⭐⭐⭐の星マークを含む）
+    3. 混雑状況と、子供の歩行のしやすさ・親が抱っこで対応しやすい環境か（※ベビーカーは使用しません）
     【実際の口コミデータ】
     {reviews_text}
     """

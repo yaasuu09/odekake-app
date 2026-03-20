@@ -86,9 +86,10 @@ document.getElementById('suggest-btn').addEventListener('click', async () => {
 
         let html = '<div style="margin-bottom:12px; color:var(--text-secondary); font-size:0.85rem; font-weight:600;">👇タップすると行き先に自動入力されます</div>';
         suggestions.forEach(s => {
+            const starsHtml = s.stars ? `<span style="color:var(--warning); margin-left:8px; font-size:0.95rem;">${s.stars}</span>` : '';
             html += `
             <div class="suggestion-card" onclick="document.getElementById('destination').value='${s.name}'; window.scrollTo({top: 0, behavior: 'smooth'});">
-                <div class="sugg-title">📍 ${s.name}</div>
+                <div class="sugg-title">📍 ${s.name}${starsHtml}</div>
                 <div class="sugg-reason">${s.reason}</div>
             </div>
             `;
