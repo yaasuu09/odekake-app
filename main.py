@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import Optional
 import uvicorn
 import services
 import os
@@ -25,12 +26,13 @@ class SuggestRequest(BaseModel):
     mode: str
     schedule: str
     origin: str
+    max_time: Optional[str] = "30分以内"
 
 
 @app.post("/api/suggest")
 def get_suggestion(req: SuggestRequest):
-    """ユーザーの「移動手段」「予定日時」「出発地」に応じてAIでおすすめの行き先を複数提案する"""
-    return services.suggest_destination(req.mode, req.schedule, req.origin)
+    """ユーザーの「移動手段」「予定日時」「出発地」「移動時間」に応じてAIでおすすめの行き先を複数提案する"""
+    return services.suggest_destination(req.mode, req.schedule, req.origin, req.max_time)
 
 @app.post("/api/navigate")
 def get_navigation_info(req: NavigateRequest):

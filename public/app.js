@@ -52,6 +52,7 @@ document.getElementById('suggest-btn').addEventListener('click', async () => {
     const origin = document.getElementById('origin').value.trim();
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const schedule = document.getElementById('schedule').value.trim() || "今すぐ";
+    const maxTime = document.getElementById('max-time').value;
     const suggestBtn = document.getElementById('suggest-btn');
     const suggestResult = document.getElementById('suggest-result');
     const destinationInput = document.getElementById('destination');
@@ -64,7 +65,7 @@ document.getElementById('suggest-btn').addEventListener('click', async () => {
         const response = await fetch(`${API_BASE_URL}/api/suggest`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: mode, schedule: schedule, origin: origin })
+            body: JSON.stringify({ mode: mode, schedule: schedule, origin: origin, max_time: maxTime })
         });
 
         if (!response.ok) throw new Error("Server Error");

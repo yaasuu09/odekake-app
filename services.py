@@ -63,8 +63,8 @@ def get_weather_info(city="Yokohama"):
     except Exception as e:
         return {"error": str(e)}
 
-def suggest_destination(mode, schedule, origin):
-    """天気と移動手段、日時、指定された出発地(現在地含む)から、2歳児に最高の行き先を複数(3〜5つ)提案する機能"""
+def suggest_destination(mode, schedule, origin, max_time="30分以内"):
+    """天気と移動手段、日時、移動時間、指定された出発地(現在地含む)から、2歳児に最高の行き先を複数(3〜5つ)提案する機能"""
     weather_info = get_weather_info("Yokohama")
     temp = weather_info.get("temp", "不明")
     desc = weather_info.get("description", "不明")
@@ -77,7 +77,8 @@ def suggest_destination(mode, schedule, origin):
     {CHILD_HOROSCOPE}
     
     【条件】
-    - 移動手段: {"自転車（片道最大30分程度、坂道が少なめの場所）" if mode == 'bicycle' else "車（片道最大50分程度、有料駐車場が近くにある場所）"}
+    - 移動手段: {"自転車（坂道が少し少なめの場所）" if mode == 'bicycle' else "車（有料駐車場が近くにある場所）"}
+    - 希望の片道移動時間: 最大{max_time}
     - お出かけの予定日時: {schedule}
     - (もし「今すぐ」など直近の場合は、現在の天気(気温{temp}度, {desc})も考慮してください)
     
