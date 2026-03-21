@@ -91,11 +91,13 @@ def suggest_destination(mode, schedule, origin, max_time="30分以内"):
     [
       {{
         "name": "施設名1",
+        "address": "施設の正確な住所や、Google Mapsで検索可能な具体的な場所の名称（例: 神奈川県横浜市南区○○1-2-3）",
         "stars": "⭐⭐⭐⭐⭐",
         "reason": "なぜおすすめなのか（120文字程度。月齢やホロスコープの観点を含めて）"
       }},
       {{
         "name": "施設名2",
+        "address": "施設の正確な住所（例: 神奈川県横浜市中区○○4-5-6）",
         "stars": "⭐⭐⭐⭐",
         "reason": "なぜおすすめなのか（120文字程度）"
       }}
@@ -109,7 +111,7 @@ def suggest_destination(mode, schedule, origin, max_time="30分以内"):
         return {"suggestion": response.text}
     except Exception as e:
         print("Suggest Error:", e)
-        return {"suggestion": '[{"name":"蒔田公園", "stars":"⭐⭐⭐", "reason":"大型遊具があり安全に遊べます。"}]'}
+        return {"suggestion": '[{"name":"蒔田公園", "address":"神奈川県横浜市南区宿町1丁目1", "stars":"⭐⭐⭐", "reason":"大型遊具があり安全に遊べます。AIからの応答が遅延しているため、定番の公園をご案内します。"}]'}
 
 def get_route_and_parking(origin, destination, mode):
     maps_mode = "bicycling" if mode == "bicycle" else "driving"

@@ -88,9 +88,19 @@ document.getElementById('suggest-btn').addEventListener('click', async () => {
         let html = '<div style="margin-bottom:12px; color:var(--text-secondary); font-size:0.85rem; font-weight:600;">👇タップすると行き先に自動入力されます</div>';
         suggestions.forEach(s => {
             const starsHtml = s.stars ? `<span style="color:var(--warning); margin-left:8px; font-size:0.95rem;">${s.stars}</span>` : '';
+            const address = s.address || "";
+            // 行き先には施設名と住所の両方を入れて、Google Maps APIでの検索ヒット率を高める
+            const searchKeyword = address ? `${s.name} ${address}` : s.name;
+            
             html += `
-            <div class="suggestion-card" onclick="document.getElementById('destination').value='${s.name}'; window.scrollTo({top: 0, behavior: 'smooth'});">
+            <div class="suggestion-card" onclick="document.getElementById('destination').value='${searchKeyword}'; window.scrollTo({top: 0, behavior: 'smooth'});">
                 <div class="sugg-title">📍 ${s.name}${starsHtml}</div>
+                ${address ? `
+                <div class="sugg-address" style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">
+                    🏠 住所: ${address} 
+                    <button type="button" class="copy-btn" onclick="copyAddress(event, '${address}', this)" style="margin-left:8px; padding:4px 8px; font-size:0.75rem; cursor:pointer; background:var(--bg-color); border:1px solid var(--border-color); border-radius:4px;">📋 コピー</button>
+                </div>
+                ` : ''}
                 <div class="sugg-reason">${s.reason}</div>
             </div>
             `;
@@ -105,6 +115,30 @@ document.getElementById('suggest-btn').addEventListener('click', async () => {
         suggestBtn.innerText = "✨ 天気・日時からAIに候補を3〜5つ出してもらう";
     }
 });
+
+// --- 住所のコピー機能 ---
+window.copyAddress = function(event, text, btnElement) {
+    // 親要素の選択(onclick)が発火しないよう伝播をストップ
+    event.stopPropagation();
+    
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            const originalText = btnElement.innerText;
+            btnElement.innerText = "✅ コピー完了！";
+            btnElement.style.color = "var(--success)";
+            setTimeout(() => {
+                btnElement.innerText = originalText;
+                btnElement.style.color = "";
+            }, 2000);
+        }).catch(err => {
+            console.error("クリップボードへのコピーに失敗しました", err);
+            alert("コピーに失敗しました");
+        });
+    } else {
+        alert("お使いのブラウザはコピー機能に対応していません");
+    }
+};
+
 
 // --- ルート・分析実行の処理 ---
 document.getElementById('search-btn').addEventListener('click', async () => {
