@@ -41,6 +41,8 @@ MC in Aries 18°27’
 MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_USER_ID = os.getenv("LINE_USER_ID")
 
 gmaps = googlemaps.Client(key=MAPS_API_KEY)
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -178,3 +180,78 @@ def analyze_place(place_name):
         return {"summary": response.text}
     except Exception as e:
         return {"error": str(e), "summary": "AIからの応答が遅延しています。"}
+
+def generate_weekly_parenting_info():
+    """週末のイベント情報、天気、感染症アラート、月齢に合わせた育児TipsをGeminiで生成する"""
+    age_str = get_child_age()
+    weather_info = get_weather_info("Yokohama")
+    
+    # 天気を文字列で整える
+    temp = weather_info.get("temp", "不明")
+    desc = weather_info.get("description", "不明")
+    weather_context = f"今週末の横浜の天気は「{desc}」、気温は約{temp}度です。"
+    if weather_info.get("wind_speed"):
+         weather_context += f" (風速: {weather_info['wind_speed']} m/s)"
+
+    prompt = f"""
+    あなたは優秀な子育て支援AIコンシェルジュです。
+    ユーザーは「横浜市」に住んでおり、明日から保育園に入園する「{age_str}」の男の子を育てています。
+    以下の情報をリサーチ・要約し、LINEで読みやすい温かみのあるメッセージを作成してください。
+    【必須項目】
+    1. 今週末（直近の土日）の横浜市内の2歳児向けイベント情報やおすすめお出かけスポットを2〜3つ。
+    2. {weather_context} この天気に合わせたお出かけの工夫や提案（雨なら完全屋内、晴れなら外遊びなど）。
+    3. 現在の横浜市周辺の「子供の感染症」の流行アラート（手足口病、RS、インフル等、直近の動向を少し調べて警戒すべきものを1つ挙げてください）。
+    4. 今週の育児・時短Tips 1つ。（保育園入園のタイミングなので、慣らし保育中の親のメンタルケアや、帰宅後の短い時間でのスキンシップのコツなど）
+    
+    出力は以下のようなフォーマット（装飾を用いた見やすいテキスト形式）にしてください。挨拶から始めてください。
+    
+    「こんにちは！今週も育児お疲れ様です✨週末に向けたお役立ち情報をお届けします！」
+    【🎪今週末のおすすめスポット】
+    （内容）
+    【天気とお出かけアドバイス】
+    （内容）
+    【⚠️今週の感染症アラート】
+    （内容）
+    【💡今週の育児Tips】
+    （内容）
+    """
+    try:
+        # Search Groundingを有効にする（最新情報が必要なため）
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config={"tools": [{"google_search": {}}]}
+        )
+        return {"message": response.text}
+    except Exception as e:
+        print("Weekly Info Error:", e)
+        return {"error": str(e), "message": "育児情報の生成中にエラーが発生しました。時間を置いて再度お試しください。"}
+
+def send_line_message(text):
+    """LINE Messaging APIを使ってメッセージを送信する"""
+    if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
+        return {"error": "LINE APIの環境変数が設定されていません。"}
+        
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+    }
+    data = {
+        "to": LINE_USER_ID,
+        "messages": [
+            {
+                "type": "text",
+                "text": text
+            }
+        ]
+    }
+    
+    try:
+        res = requests.post(url, headers=headers, json=data)
+        if res.status_code == 200:
+            return {"status": "success"}
+        else:
+            return {"error": res.text}
+    except Exception as e:
+        return {"error": str(e)}

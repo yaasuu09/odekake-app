@@ -49,6 +49,22 @@ def get_navigation_info(req: NavigateRequest):
         "analysis": ai_analysis
     }
 
+@app.post("/api/cron/weekly-delivery")
+def deliver_weekly_info():
+    """定期実行：毎週末に向けた育児情報・お出かけ情報を生成しLINEで配信する"""
+    info = services.generate_weekly_parenting_info()
+    if "error" in info and "message" not in info:
+        return {"status": "failed", "error": info["error"]}
+    
+    text_message = info.get("message", "メッセージの生成に失敗しました。")
+    result = services.send_line_message(text_message)
+    
+    return {
+        "status": "success",
+        "delivery_result": result,
+        "message_preview": text_message
+    }
+
 # デプロイ用に、フロントエンドのファイル（publicフォルダ）を配信する設定
 app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
