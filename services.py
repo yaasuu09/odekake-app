@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import requests
 import googlemaps
 from google import genai
@@ -181,51 +181,100 @@ def analyze_place(place_name):
     except Exception as e:
         return {"error": str(e), "summary": "AIからの応答が遅延しています。"}
 
-def generate_weekly_parenting_info():
-    """週末のイベント情報、天気、感染症アラート、月齢に合わせた育児TipsをGeminiで生成する"""
+def generate_daily_delivery_info():
+    """毎日のイベント情報・育児TipsをGeminiで生成する。水・金はイベント検索あり、それ以外はTipsのみ。"""
     age_str = get_child_age()
     weather_info = get_weather_info("Yokohama")
     
+    # 日本時間での曜日と現在時刻の取得
+    jst = timezone(timedelta(hours=9), 'JST')
+    now = datetime.now(jst)
+    weekday = now.weekday() # 0:月, 1:火, 2:水, 3:木, 4:金, 5:土, 6:日
+    hour = now.hour
+    
+    # 時間帯に合った挨拶
+    if 4 <= hour < 10:
+        greeting = "おはようございます！今日も1日マイペースにいきましょう✨"
+    elif 10 <= hour < 17:
+        greeting = "こんにちは！今日もお疲れ様です☕️"
+    else:
+        greeting = "こんばんは！今日も1日本当にお疲れ様でした🌙"
+
     # 天気を文字列で整える
     temp = weather_info.get("temp", "不明")
     desc = weather_info.get("description", "不明")
-    weather_context = f"今週末の横浜の天気は「{desc}」、気温は約{temp}度です。"
+    weather_context = f"今日の横浜市の天気は「{desc}」、気温は約{temp}度です。"
     if weather_info.get("wind_speed"):
          weather_context += f" (風速: {weather_info['wind_speed']} m/s)"
 
-    prompt = f"""
-    あなたは優秀な子育て支援AIコンシェルジュです。
-    ユーザーは「横浜市」に住んでおり、明日から保育園に入園する「{age_str}」の男の子を育てています。
-    以下の情報をリサーチ・要約し、LINEで読みやすい温かみのあるメッセージを作成してください。
-    【必須項目】
-    1. 今週末（直近の土日）の横浜市内の2歳児向けイベント情報やおすすめお出かけスポットを2〜3つ。
-    2. {weather_context} この天気に合わせたお出かけの工夫や提案（雨なら完全屋内、晴れなら外遊びなど）。
-    3. 現在の横浜市周辺の「子供の感染症」の流行アラート（手足口病、RS、インフル等、直近の動向を少し調べて警戒すべきものを1つ挙げてください）。
-    4. 今週の育児・時短Tips 1つ。（保育園入園のタイミングなので、慣らし保育中の親のメンタルケアや、帰宅後の短い時間でのスキンシップのコツなど）
-    
-    出力は以下のようなフォーマット（装飾を用いた見やすいテキスト形式）にしてください。挨拶から始めてください。
-    
-    「こんにちは！今週も育児お疲れ様です✨週末に向けたお役立ち情報をお届けします！」
-    【🎪今週末のおすすめスポット】
-    （内容）
-    【天気とお出かけアドバイス】
-    （内容）
-    【⚠️今週の感染症アラート】
-    （内容）
-    【💡今週の育児Tips】
-    （内容）
-    """
+    # 水曜(2)と金曜(4)はイベント＋Tips
+    if weekday in [2, 4]:
+        search_theme = "少し遠出のお出かけスポットや今週末のイベント情報" if weekday == 2 else "近場の穴場公園や、雨の日でも行ける屋内プレイスペース"
+        prompt = f"""
+        あなたは優秀な子育て支援AIコンシェルジュです。
+        ユーザーは「横浜市」に住んでおり、保育園に通う「{age_str}」の男の子を育てています。
+        以下の情報をリサーチ・要約し、LINEで読みやすい温かみのあるメッセージを作成してください。
+        
+        【必須項目】
+        1. 今週末（直近の土日）の横浜市内の2歳児向けスポット・イベント情報を2〜3つ。
+           ※今回の検索テーマは「{search_theme}」を中心にお願いします。
+        2. {weather_context} この天気に合わせたアドバイス。
+        3. 現在の横浜市周辺の「子供の感染症」の流行アラート（直近の動向を調べて警戒すべきものを1つ挙げてください）。
+        4. 今日の育児・時短・メンタルケアの豆知識（Tips）1つ。
+        
+        出力フォーマット（見出し装飾を使って見やすく。マークダウンの ``` は不要）:
+        {greeting}
+        
+        【🎪 今週末のおすすめスポット】
+        （内容）
+        【🌤 天気とアドバイス】
+        （内容）
+        【⚠️ 感染症アラート】
+        （内容）
+        【💡 今日の育児Tips】
+        （内容）
+        """
+        tools_config = [{"google_search": {}}]
+    else:
+        # それ以外の曜日はTipsと天気と労いのみ
+        prompt = f"""
+        あなたは優秀な子育て支援AIコンシェルジュです。
+        ユーザーは「横浜市」に住んでおり、保育園に通う「{age_str}」の男の子を育てています。
+        毎日のモチベーションアップに繋がるような、短くて読みやすいLINEメッセージを作成してください。
+        
+        【必須項目】
+        1. {weather_context} これに基づく簡単なアドバイス。
+        2. 今日の育児・家事時短・メンタルケアの豆知識（Tips）1つ。（保育園関連、イヤイヤ期対策、超時短の夕飯準備など）
+        3. 毎日育児と仕事を頑張る親への温かいねぎらいの言葉。
+        
+        出力フォーマット（装飾を使って見やすく。マークダウンの ``` は不要）:
+        {greeting}
+        
+        【🌤 今日の天気とアドバイス】
+        （内容）
+        【💡 今日の育児Tips】
+        （内容）
+        
+        （温かいねぎらいのメッセージ）
+        """
+        tools_config = None
+
     try:
-        # Search Groundingを有効にする（最新情報が必要なため）
-        response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config={"tools": [{"google_search": {}}]}
-        )
+        if tools_config:
+            response = gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config={"tools": tools_config}
+            )
+        else:
+            response = gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
         return {"message": response.text}
     except Exception as e:
-        print("Weekly Info Error:", e)
-        return {"error": str(e), "message": "育児情報の生成中にエラーが発生しました。時間を置いて再度お試しください。"}
+        print("Daily Info Error:", e)
+        return {"error": str(e), "message": f"{greeting}\n\n情報の生成中にエラーが発生しました。時間を置いて再度お試しください。"}
 
 def send_line_message(text):
     """LINE Messaging APIを使ってメッセージを送信する"""

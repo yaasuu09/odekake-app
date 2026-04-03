@@ -49,10 +49,10 @@ def get_navigation_info(req: NavigateRequest):
         "analysis": ai_analysis
     }
 
-@app.post("/api/cron/weekly-delivery")
-def deliver_weekly_info():
-    """定期実行：毎週末に向けた育児情報・お出かけ情報を生成しLINEで配信する"""
-    info = services.generate_weekly_parenting_info()
+@app.post("/api/cron/daily-delivery")
+def deliver_daily_info():
+    """定期実行：毎日の育児Tipsやお出かけ情報を生成しLINEで配信する"""
+    info = services.generate_daily_delivery_info()
     if "error" in info and "message" not in info:
         return {"status": "failed", "error": info["error"]}
     
