@@ -278,16 +278,15 @@ def generate_daily_delivery_info():
 
 def send_line_message(text):
     """LINE Messaging APIを使ってメッセージを送信する"""
-    if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
+    if not LINE_CHANNEL_ACCESS_TOKEN:
         return {"error": "LINE APIの環境変数が設定されていません。"}
         
-    url = "https://api.line.me/v2/bot/message/push"
+    url = "https://api.line.me/v2/bot/message/broadcast"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
     }
     data = {
-        "to": LINE_USER_ID,
         "messages": [
             {
                 "type": "text",
