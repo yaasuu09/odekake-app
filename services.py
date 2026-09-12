@@ -42,7 +42,6 @@ MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_USER_ID = os.getenv("LINE_USER_ID")
 
 gmaps = googlemaps.Client(key=MAPS_API_KEY)
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -62,6 +61,34 @@ def get_weather_info(city="Yokohama"):
                 "alert": alert
             }
         return {"error": data.get("message")}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_tomorrow_weather_info(city="Yokohama"):
+    """OpenWeatherMapの5日間/3時間予報APIから、明日の天気予報（最高/最低気温、天気概要、風速）を取得する"""
+    url = f"https://api.openweathermap.org/data/2.5/forecast?q={city}&appid={OPENWEATHER_API_KEY}&units=metric&lang=ja"
+    try:
+        res = requests.get(url)
+        data = res.json()
+        if res.status_code == 200:
+            jst = timezone(timedelta(hours=9), 'JST')
+            now = datetime.now(jst)
+            tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            tomorrow_items = [item for item in data.get("list", []) if item.get("dt_txt", "").startswith(tomorrow)]
+            if tomorrow_items:
+                max_temp = round(max(item["main"]["temp_max"] for item in tomorrow_items), 1)
+                min_temp = round(min(item["main"]["temp_min"] for item in tomorrow_items), 1)
+                weather_descs = list(dict.fromkeys([item["weather"][0]["description"] for item in tomorrow_items if item.get("weather")]))
+                desc_str = "、".join(weather_descs) if weather_descs else "不明"
+                max_wind = round(max(item.get("wind", {}).get("speed", 0.0) for item in tomorrow_items), 1)
+                return {
+                    "date": tomorrow,
+                    "max_temp": max_temp,
+                    "min_temp": min_temp,
+                    "description": desc_str,
+                    "wind_speed": max_wind
+                }
+        return {"error": data.get("message", "予報データの取得に失敗しました")}
     except Exception as e:
         return {"error": str(e)}
 
@@ -182,109 +209,99 @@ def analyze_place(place_name):
         return {"error": str(e), "summary": "AIからの応答が遅延しています。"}
 
 def generate_daily_delivery_info():
-    """毎日のイベント情報・育児TipsをGeminiで生成する。水・金はイベント検索あり、それ以外はTipsのみ。"""
+    """毎日の月齢育児コラム、横浜市の直近イベント情報、複数感染症アラート、明日の天気と服装アドバイスをGeminiで生成する"""
     age_str = get_child_age()
-    weather_info = get_weather_info("Yokohama")
+    tomorrow_weather = get_tomorrow_weather_info("Yokohama")
     
     # 日本時間での曜日と現在時刻の取得
     jst = timezone(timedelta(hours=9), 'JST')
     now = datetime.now(jst)
-    weekday = now.weekday() # 0:月, 1:火, 2:水, 3:木, 4:金, 5:土, 6:日
+    tomorrow = now + timedelta(days=1)
+    
+    weekday_kanji = ["月", "火", "水", "木", "金", "土", "日"]
+    now_str = f"{now.year}年{now.month}月{now.day}日({weekday_kanji[now.weekday()]})"
+    tomorrow_str = f"{tomorrow.month}月{tomorrow.day}日({weekday_kanji[tomorrow.weekday()]})"
     hour = now.hour
     
-    # 時間帯に合った挨拶
-    if 4 <= hour < 10:
+    # 配信時間帯（主にお昼12時）に合った挨拶
+    if 4 <= hour < 11:
         greeting = "おはようございます！今日も1日マイペースにいきましょう✨"
-    elif 10 <= hour < 17:
-        greeting = "こんにちは！今日もお疲れ様です☕️"
+    elif 11 <= hour < 17:
+        greeting = "こんにちは！お昼休み、今日もお疲れ様です☕️"
     else:
         greeting = "こんばんは！今日も1日本当にお疲れ様でした🌙"
 
-    # 天気を文字列で整える
-    temp = weather_info.get("temp", "不明")
-    desc = weather_info.get("description", "不明")
-    weather_context = f"今日の横浜市の天気は「{desc}」、気温は約{temp}度です。"
-    if weather_info.get("wind_speed"):
-         weather_context += f" (風速: {weather_info['wind_speed']} m/s)"
-
-    # 曜日ごとにTipsのジャンルを変更して内容の偏りを防ぐ
-    tip_genres = [
-        "食事・栄養・超時短メニュー（食べムラ対策や準備の工夫など）", # 0:月
-        "言葉や心の発達・コミュニケーション", # 1:火
-        "生活習慣・睡眠（歯磨き、お風呂、寝かしつけなど）", # 2:水
-        "運動遊び・おうち知育・指先を使う遊び", # 3:木
-        "親のメンタルケア・夫婦の連携・家事の効率化", # 4:金
-        "お出かけ先での工夫・安全対策", # 5:土
-        "しつけ・自我の芽生え（イヤイヤ期など）への新しいアプローチ" # 6:日
-    ]
-    today_tip_genre = tip_genres[weekday]
-
-    # 水曜(2)と金曜(4)はイベント＋Tips
-    if weekday in [2, 4]:
-        search_theme = "少し遠出のお出かけスポットや今週末のイベント情報" if weekday == 2 else "近場の穴場公園や、雨の日でも行ける屋内プレイスペース"
-        prompt = f"""
-        あなたは優秀な子育て支援AIコンシェルジュです。
-        ユーザーは「横浜市」に住んでおり、保育園に通う「{age_str}」の男の子を育てています。
-        以下の情報をリサーチ・要約し、LINEで読みやすい温かみのあるメッセージを作成してください。
-        
-        【必須項目】
-        1. 今週末（直近の土日）の横浜市内の2歳児向けスポット・イベント情報を2〜3つ。
-           ※今回の検索テーマは「{search_theme}」を中心にお願いします。
-        2. {weather_context} この天気に合わせたアドバイス。
-        3. 現在の横浜市周辺の「子供の感染症」の流行アラート（直近の動向を調べて警戒すべきものを1つ挙げてください）。
-        4. 今日の育児Tips: {age_str}の男の子の【{today_tip_genre}】に関するお役立ち豆知識を1つ。
-           ※「イヤイヤ期には2択で選ばせる」等の使い古された内容は避け、専門的かつ実践的で、親にとって新しく具体的な気づきとなるTipsを提供してください。
-        
-        出力フォーマット（見出し装飾を使って見やすく。マークダウンの ``` は不要）:
-        {greeting}
-        
-        【🎪 今週末のおすすめスポット】
-        （内容）
-        【🌤 天気とアドバイス】
-        （内容）
-        【⚠️ 感染症アラート】
-        （内容）
-        【💡 今日の育児Tips（テーマ：{today_tip_genre}）】
-        （内容）
-        """
-        tools_config = [{"google_search": {}}]
+    # 明日の天気コンテキスト
+    if "error" not in tomorrow_weather:
+        weather_desc = tomorrow_weather.get("description", "不明")
+        max_t = tomorrow_weather.get("max_temp", "不明")
+        min_t = tomorrow_weather.get("min_temp", "不明")
+        wind = tomorrow_weather.get("wind_speed", 0)
+        weather_context = f"明日（{tomorrow_str}）の横浜市の天気予報は「{weather_desc}」、予想最高気温は{max_t}℃、最低気温は{min_t}℃（最大風速: {wind}m/s）です。"
     else:
-        # それ以外の曜日はTipsと天気と労いのみ
-        prompt = f"""
-        あなたは優秀な子育て支援AIコンシェルジュです。
-        ユーザーは「横浜市」に住んでおり、保育園に通う「{age_str}」の男の子を育てています。
-        毎日のモチベーションアップに繋がるような、短くて読みやすいLINEメッセージを作成してください。
-        
-        【必須項目】
-        1. {weather_context} これに基づく簡単なアドバイス。
-        2. 今日の育児Tips: {age_str}の男の子の【{today_tip_genre}】に関するお役立ち豆知識を1つ。
-           ※「イヤイヤ期には2択で選ばせる」等の使い古された内容は避け、専門的かつ実践的で、親にとって新しく具体的な気づきとなるTipsを提供してください。
-        3. 毎日育児と仕事を頑張る親への温かいねぎらいの言葉。
-        
-        出力フォーマット（装飾を使って見やすく。マークダウンの ``` は不要）:
-        {greeting}
-        
-        【🌤 今日の天気とアドバイス】
-        （内容）
-        【💡 今日の育児Tips（テーマ：{today_tip_genre}）】
-        （内容）
-        
-        （温かいねぎらいのメッセージ）
-        """
-        tools_config = None
+        weather_context = f"明日（{tomorrow_str}）の横浜市の天気予報を検索し、明日の予想気温と天気を反映してください。"
+
+    prompt = f"""
+    あなたは横浜に住むファミリーを全力でサポートする、頼れる子育て専属コンシェルジュAIです。
+    ユーザーは「横浜市」在住で、保育園に通う「{age_str}」（2024年3月生まれ）の男の子を育てています。
+    今日の日付は「{now_str}」です。
+    お昼12時前後に配信されるLINEメッセージとして、親御さんがお昼休みに読んで「なるほど！」「知れてよかった！」と元気が出る、充実したメッセージを作成してください。
+
+    以下の【必須項目】をすべて網羅してください：
+
+    1. 【💡 今日の育児コラム（{age_str}のいま）】（★一番のメインコンテンツ！）
+       - お子様の現在の月齢（{age_str}）の発達段階にぴったりの育児トピック・豆知識を、具体的かつ実践的に読み応えのあるボリュームで書いてください。
+       - テーマは固定せず、以下のような幅広い観点から「毎日新鮮で役に立つ切り口」を1つ選んで掘り下げてください：
+         * 言葉の急成長（二語文・三語文、言い間違いの愛らしさ、語彙を増やす自然な会話など）
+         * 自我の芽生え・イヤイヤ期・自己主張への寄り添い（「自分でやりたい」への工夫、切り替えの魔法の言葉など）
+         * 体力向上・運動遊び・おうちでできる指先遊びやごっこ遊び
+         * 生活習慣（トイトレの進め方、歯磨き・お風呂・お着替えがスムーズになる遊び心）
+         * 食事・栄養・食べムラへの対策、時短アイディア
+         * 睡眠のリズムや寝かしつけの工夫
+         * 親のメンタルケア・声かけの工夫・夫婦の連携
+       - 「イヤイヤ期には2択で選ばせる」等の使い古された一般論は避け、専門的かつ実践的で、親にとって新しく具体的な気づきとなるTipsを提供してください。
+
+    2. 【🎪 横浜市・直近のイベント情報】
+       - Google検索ツールを活用し、今日（{now_str}）から直近1〜2週間の間に、神奈川県横浜市内で開催される幼児・ファミリー向けイベント、季節のお祭り、マルシェ、ワークショップ、子ども向け催し物などの最新情報を調べて「2〜3つ」紹介してください。
+       - 各イベントについて「開催日時」「場所（施設名・エリア）」「イベント名」「内容や見どころ」を簡潔かつ具体的に記載してください。
+       - ※固定の公園紹介ではなく、期間限定のイベント・催し・マルシェを必ず紹介してください。
+
+    3. 【⚠️ 感染症流行アラート】
+       - Google検索ツールを活用し、現在の横浜市・神奈川県周辺における「子どもの感染症」（手足口病、RSウイルス、インフルエンザ、マイコプラズマ肺炎、溶連菌、アデノウイルス、コロナ等）の直近の流行状況を調べてください。
+       - 警戒すべき感染症が複数ある場合は、遠慮なく複数挙げて、それぞれの初期症状や家庭・保育園で意識すべき予防ポイントを簡潔に伝えてください。
+
+    4. 【🌤 明日の天気と服装アドバイス】
+       - {weather_context}
+       - この予報に基づき、明日のお出かけや保育園登園に最適な「子供の服装（半袖/長袖、重ね着、羽織りものなど）」や「持ち物（雨具、タオル、着替えなど）」のアドバイスを具体的に記載してください。
+
+    5. 【☕️ パパママへのねぎらいメッセージ】
+       - 毎日仕事と育児を頑張る親御さんへ、お昼休みにホッと一息つける温かい応援・労いの言葉を添えてください。
+
+    【出力フォーマット】（見出しの絵文字装飾を使って美しく整理。Markdownのコードブロック ``` は不要）:
+    {greeting}
+
+    💡【今日の育児コラム：{age_str}のいま】
+    （テーマ名）
+    （充実した内容・アドバイス）
+
+    🎪【横浜市・直近のイベント情報】
+    （2〜3件のイベント情報）
+
+    ⚠️【感染症流行アラート】
+    （現在流行している感染症と予防ポイント）
+
+    🌤【明日の天気と服装アドバイス】
+    （明日の天気・予想気温と、それに合わせた服装・持ち物のアドバイス）
+
+    ☕️（温かいねぎらいのメッセージ）
+    """
 
     try:
-        if tools_config:
-            response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-                config={"tools": tools_config}
-            )
-        else:
-            response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
-            )
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config={"tools": [{"google_search": {}}]}
+        )
         return {"message": response.text}
     except Exception as e:
         print("Daily Info Error:", e)
