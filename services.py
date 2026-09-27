@@ -4,8 +4,42 @@ import requests
 import googlemaps
 from google import genai
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
+
+HISTORY_FILE = "topic_history.json"
+
+def get_recent_topics(days=14):
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            history = json.load(f)
+        cutoff = datetime.now() - timedelta(days=days)
+        recent = [item["topic"] for item in history if datetime.fromisoformat(item["date"]) > cutoff]
+        return recent
+    except Exception as e:
+        print("Error reading topic history:", e)
+        return []
+
+def add_topic_to_history(topic):
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception:
+            pass
+    
+    history.append({"date": datetime.now().isoformat(), "topic": topic})
+    history = history[-30:]  # 履歴は直近30件まで保持
+    
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("Error writing topic history:", e)
 
 def get_child_age():
     birth_date = datetime(2024, 3, 8)
@@ -213,6 +247,12 @@ def generate_daily_delivery_info():
     age_str = get_child_age()
     tomorrow_weather = get_tomorrow_weather_info("Yokohama")
     
+    recent_topics = get_recent_topics(14)
+    topics_context = ""
+    if recent_topics:
+        topics_list = "\n".join([f"・{t}" for t in recent_topics])
+        topics_context = f"\n\n       【重要：過去2週間の配信済みテーマ】\n       以下のテーマは直近で配信済みのため、これらと被らない、全く新しいテーマを必ず選んでください。\n{topics_list}\n"
+
     # 日本時間での曜日と現在時刻の取得
     jst = timezone(timedelta(hours=9), 'JST')
     now = datetime.now(jst)
@@ -258,7 +298,7 @@ def generate_daily_delivery_info():
          * 生活習慣（トイトレの進め方、歯磨き・お風呂・お着替えがスムーズになる遊び心）
          * 食事・栄養・食べムラへの対策、時短アイディア
          * 睡眠のリズムや寝かしつけの工夫
-         * 親のメンタルケア・声かけの工夫・夫婦の連携
+         * 親のメンタルケア・声かけの工夫・夫婦の連携{topics_context}
        - 「イヤイヤ期には2択で選ばせる」等の使い古された一般論は避け、専門的かつ実践的で、親にとって新しく具体的な気づきとなるTipsを提供してください。
 
     2. 【🎪 横浜市・直近のイベント情報】
@@ -282,7 +322,7 @@ def generate_daily_delivery_info():
     {greeting}
 
     💡【今日の育児コラム：{age_str}のいま】
-    （テーマ名）
+    ■テーマ：（ここにテーマ名を1行で記載）
     （充実した内容・アドバイス）
 
     🎪【横浜市・直近のイベント情報】
@@ -303,7 +343,16 @@ def generate_daily_delivery_info():
             contents=prompt,
             config={"tools": [{"google_search": {}}]}
         )
-        return {"message": response.text}
+        message_text = response.text
+        
+        # 配信したテーマを履歴に保存
+        for line in message_text.split('\n'):
+            if line.strip().startswith('■テーマ：'):
+                topic_name = line.strip().replace('■テーマ：', '').strip()
+                add_topic_to_history(topic_name)
+                break
+                
+        return {"message": message_text}
     except Exception as e:
         print("Daily Info Error:", e)
         return {"error": str(e), "message": f"{greeting}\n\n情報の生成中にエラーが発生しました。時間を置いて再度お試しください。"}
