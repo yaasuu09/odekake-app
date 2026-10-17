@@ -49,15 +49,20 @@ def get_navigation_info(req: NavigateRequest):
         "analysis": ai_analysis
     }
 
-@app.post("/api/cron/daily-delivery")
+@app.api_route("/api/cron/daily-delivery", methods=["GET", "POST"])
 def deliver_daily_info():
     """定期実行：感染症アラート、明日の天気、重複しない育児コラムを生成しLINEで配信する"""
     info = services.generate_daily_delivery_info()
-    if "error" in info and "message" not in info:
+    if "error" in info:
         return {"status": "failed", "error": info["error"]}
     
-    text_message = info.get("message", "メッセージの生成に失敗しました。")
+    text_message = info.get("message", "")
+    if not text_message:
+        return {"status": "failed", "error": "Empty message generated"}
+
     result = services.send_line_message(text_message)
+    if "error" in result:
+        return {"status": "failed", "delivery_result": result}
     
     return {
         "status": "success",
